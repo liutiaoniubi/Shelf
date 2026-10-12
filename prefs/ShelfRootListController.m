@@ -2,7 +2,11 @@
 
 @implementation ShelfRootListController
 
-// Root.plist 已描述全部条目，这里无需额外代码。
-// 保留控制器只是为了让 PreferenceLoader 有明确的 NSPrincipalClass。
+- (NSArray *)specifiers {
+    if (!_specifiers) {
+        _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
+    }
+    return _specifiers;
+}
 
 @end
