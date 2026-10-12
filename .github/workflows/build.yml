@@ -15,7 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 手机上传文件夹不便，允许直接上传 zip：解压后即为仓库内容
       - name: Extract source bundle if present
         run: |
           shopt -s nullglob
@@ -35,12 +34,11 @@ jobs:
           elif [ -f Shelf/Makefile ]; then
             echo "src=Shelf" >> $GITHUB_OUTPUT
           else
-            echo "未找到 Makefile，列出目录供排查：" >&2
+            echo "未找到 Makefile" >&2
             find . -maxdepth 2 -name "Makefile" >&2 || true
             exit 1
           fi
 
-      # roothide 必须用 roothide 的 Theos fork，官方 theos 不支持 roothide scheme
       - name: Checkout roothide Theos
         uses: actions/checkout@v4
         with:
@@ -48,6 +46,29 @@ jobs:
           path: .theos-src
           submodules: recursive
           fetch-depth: 1
+
+      - name: Install ldid (签名工具)
+        run: |
+          set -e
+          mkdir -p "$HOME/.local/bin"
+          if ! command -v ldid >/dev/null 2>&1; then
+            echo "下载 Procursus ldid (macOS arm64)..."
+            curl -fsSL -o /tmp/ldid \
+              "https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_arm64" \
+            || curl -fsSL -o /tmp/ldid \
+              "https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64"
+            chmod +x /tmp/ldid
+            xattr -dr com.apple.quarantine /tmp/ldid 2>/dev/null || true
+            mv /tmp/ldid "$HOME/.local/bin/ldid"
+          fi
+          # 同时放进 THEOS/bin，Theos 优先从这里找
+          mkdir -p "$GITHUB_WORKSPACE/.theos-src/bin"
+          cp "$(command -v ldid)" "$GITHUB_WORKSPACE/.theos-src/bin/ldid"
+          chmod +x "$GITHUB_WORKSPACE/.theos-src/bin/ldid"
+          xattr -dr com.apple.quarantine "$GITHUB_WORKSPACE/.theos-src/bin/ldid" 2>/dev/null || true
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "--- ldid 版本 ---"
+          "$HOME/.local/bin/ldid" 2>&1 | head -2 || true
 
       - name: Select Xcode
         run: |
@@ -57,7 +78,7 @@ jobs:
       - name: Build package (roothide)
         run: |
           export THEOS="$GITHUB_WORKSPACE/.theos-src"
-          export PATH="$THEOS/bin:$PATH"
+          export PATH="$THEOS/bin:$HOME/.local/bin:$PATH"
           MAKE=$(command -v gmake || command -v make)
           cd "$GITHUB_WORKSPACE/${{ steps.locate.outputs.src }}"
           $MAKE clean || true
