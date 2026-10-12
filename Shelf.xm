@@ -4,12 +4,35 @@
 #import <objc/runtime.h>
 #import "ShelfPrefs.h"
 
+#pragma mark - 私有类声明
+
+@interface CSQuickActionsView : UIView
+@end
+
+@interface CSProminentEmptyElementView : UIView
+@end
+
+@interface CSProminentDisplayView : UIView
+@end
+
+@interface NCNotificationListView : UIView
+@end
+
+@interface NCNotificationListCountIndicatorView : UIView
+@end
+
+@interface NCNotificationStructuredListViewController : UIViewController
+@end
+
+@interface CSCombinedListViewController : UIViewController
+@end
+
 #pragma mark - 弱引用注册表
 
 @interface ShelfRegistry : NSObject
-@property (nonatomic, strong) NSHashTable *quickActions;   // CSQuickActionsView
-@property (nonatomic, strong) NSHashTable *prominent;      // CSProminentEmptyElementView
-@property (nonatomic, strong) NSHashTable *lists;          // NCNotificationListView
+@property (nonatomic, strong) NSHashTable *quickActions;
+@property (nonatomic, strong) NSHashTable *prominent;
+@property (nonatomic, strong) NSHashTable *lists;
 + (instancetype)sharedRegistry;
 @end
 
@@ -56,14 +79,14 @@ static char kShelfAppliedFrameKey;
 static char kShelfBusyKey;
 static char kShelfDeltaKey;
 
-#pragma mark - 几何常量（调参入口）
+#pragma mark - 几何常量
 
-static CGFloat ShelfWidgetGap(void)   { return 8.0; }   // 小组件行 ↔ 快捷按钮
-static CGFloat ShelfNotificationGap(void) { return 10.0; } // 通知列表 ↔ 小组件行
+static CGFloat ShelfWidgetGap(void)   { return 8.0; }
+static CGFloat ShelfNotificationGap(void) { return 10.0; }
 
 static BOOL ShelfNear(CGFloat a, CGFloat b) { return fabs(a - b) < 0.01; }
 
-#pragma mark - 小组件行：绝对定位（以系统传入值为基准，防累积漂移）
+#pragma mark - 小组件行
 
 static CGPoint ShelfAdjustedWidgetCenter(UIView *view, CGPoint systemCenter) {
     ShelfPrefs *p = [ShelfPrefs sharedPrefs];
@@ -73,7 +96,7 @@ static CGPoint ShelfAdjustedWidgetCenter(UIView *view, CGPoint systemCenter) {
     if (appliedValue) {
         CGPoint applied = appliedValue.CGPointValue;
         if (ShelfNear(applied.x, systemCenter.x) && ShelfNear(applied.y, systemCenter.y)) {
-            return systemCenter; // 回声：已是本次算过的结果
+            return systemCenter;
         }
     }
     objc_setAssociatedObject(view, &kShelfSystemCenterKey,
@@ -152,7 +175,6 @@ static CGRect ShelfAdjustedListFrame(UIView *list, CGRect systemFrame) {
         if (referenceY != CGFLOAT_MAX) {
             CGFloat bottom = referenceY - ShelfNotificationGap() + p.notificationOffset;
             CGFloat candidateY = bottom - out.size.height;
-            // 装不下就放弃调整，避免顶到时钟/状态栏
             if (candidateY >= CGRectGetMinY(superview.bounds)) {
                 out.origin.y = candidateY;
             }
@@ -190,7 +212,7 @@ static void ShelfRelayoutList(UIView *list) {
     }
 }
 
-#pragma mark - "N 条更多通知" 胶囊：跟随列表位移
+#pragma mark - 更多通知胶囊
 
 static CGPoint ShelfAdjustedIndicatorCenter(UIView *view, CGPoint systemCenter) {
     ShelfPrefs *p = [ShelfPrefs sharedPrefs];
@@ -217,7 +239,7 @@ static CGPoint ShelfAdjustedIndicatorCenter(UIView *view, CGPoint systemCenter) 
     return out;
 }
 
-#pragma mark - 层级查找与批量刷新
+#pragma mark - 层级查找与刷新
 
 static UIView *ShelfFindSubview(UIView *root, Class cls, NSInteger depth) {
     if (!root || !cls || depth < 0) return nil;
@@ -259,19 +281,19 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 }
 
 #pragma mark - Hooks
-// 每个类单独成组：类不存在时跳过 %init，避免 MSHookMessageEx 传 nil 崩溃
 
 %group G_QuickActions
 %hook CSQuickActionsView
 - (void)didMoveToWindow {
     %orig;
-    if (self.window) [ShelfQuickActions() addObject:self];
-    else             [ShelfQuickActions() removeObject:self];
-    ShelfRefreshWindow(self.window);
+    UIView *v = (UIView *)self;
+    if (v.window) [ShelfQuickActions() addObject:v];
+    else          [ShelfQuickActions() removeObject:v];
+    ShelfRefreshWindow(v.window);
 }
 - (void)layoutSubviews {
     %orig;
-    ShelfRefreshWindow(self.window);
+    ShelfRefreshWindow(((UIView *)self).window);
 }
 %end
 %end
@@ -280,16 +302,17 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 %hook CSProminentEmptyElementView
 - (void)didMoveToWindow {
     %orig;
-    if (self.window) [ShelfProminent() addObject:self];
-    else             [ShelfProminent() removeObject:self];
-    ShelfRelayoutWidget(self);
+    UIView *v = (UIView *)self;
+    if (v.window) [ShelfProminent() addObject:v];
+    else          [ShelfProminent() removeObject:v];
+    ShelfRelayoutWidget(v);
 }
 - (void)layoutSubviews {
     %orig;
-    ShelfRelayoutWidget(self);
+    ShelfRelayoutWidget((UIView *)self);
 }
 - (void)setCenter:(CGPoint)center {
-    %orig(ShelfAdjustedWidgetCenter(self, center));
+    %orig(ShelfAdjustedWidgetCenter((UIView *)self, center));
 }
 %end
 %end
@@ -298,7 +321,7 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 %hook CSProminentDisplayView
 - (void)layoutSubviews {
     %orig;
-    ShelfRefreshWindow(self.window);
+    ShelfRefreshWindow(((UIView *)self).window);
 }
 %end
 %end
@@ -307,11 +330,12 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 %hook NCNotificationListView
 - (void)didMoveToWindow {
     %orig;
-    if (self.window) {
-        [ShelfLists() addObject:self];
-        ShelfRelayoutList(self);
+    UIView *v = (UIView *)self;
+    if (v.window) {
+        [ShelfLists() addObject:v];
+        ShelfRelayoutList(v);
     } else {
-        [ShelfLists() removeObject:self];
+        [ShelfLists() removeObject:v];
     }
 }
 %end
@@ -321,7 +345,8 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 %hook NCNotificationStructuredListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
-    UIView *list = ShelfFindSubview(self.view, NSClassFromString(@"NCNotificationListView"), 6);
+    UIView *root = ((UIViewController *)self).view;
+    UIView *list = ShelfFindSubview(root, NSClassFromString(@"NCNotificationListView"), 6);
     if (list) ShelfRelayoutList(list);
 }
 %end
@@ -330,12 +355,13 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 %group G_Indicator
 %hook NCNotificationListCountIndicatorView
 - (void)setCenter:(CGPoint)center {
-    %orig(ShelfAdjustedIndicatorCenter(self, center));
+    %orig(ShelfAdjustedIndicatorCenter((UIView *)self, center));
 }
 - (void)layoutSubviews {
     %orig;
-    CGPoint target = ShelfAdjustedIndicatorCenter(self, self.center);
-    if (!ShelfNear(self.center.y, target.y)) self.center = target;
+    UIView *v = (UIView *)self;
+    CGPoint target = ShelfAdjustedIndicatorCenter(v, v.center);
+    if (!ShelfNear(v.center.y, target.y)) v.center = target;
 }
 %end
 %end
@@ -344,7 +370,7 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 %hook CSCombinedListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
-    ShelfRefreshWindow(self.view.window);
+    ShelfRefreshWindow(((UIViewController *)self).view.window);
 }
 %end
 %end
