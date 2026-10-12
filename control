@@ -1,0 +1,9 @@
+Package: com.shelf.tweak
+Name: Shelf
+Version: 0.0.1
+Architecture: iphoneos-arm64e
+Description: 将锁屏小组件行停靠到底部（快捷按钮上方），通知列表随之对齐。事件驱动，无轮询。
+Maintainer: you
+Author: you
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader
