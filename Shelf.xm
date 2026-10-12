@@ -79,12 +79,31 @@ static char kShelfAppliedFrameKey;
 static char kShelfBusyKey;
 static char kShelfDeltaKey;
 
-#pragma mark - 几何常量
+#pragma mark - 几何常量（调参入口）
 
-static CGFloat ShelfWidgetGap(void)   { return 8.0; }
-static CGFloat ShelfNotificationGap(void) { return 10.0; }
+static CGFloat ShelfWidgetGap(void)         { return 8.0; }
+static CGFloat ShelfNotificationGap(void)   { return 10.0; }
+static CGFloat ShelfQuickActionsZone(void)  { return 78.0; }
+static CGFloat ShelfDefaultWidgetHeight(void) { return 60.0; }
 
 static BOOL ShelfNear(CGFloat a, CGFloat b) { return fabs(a - b) < 0.01; }
+
+#pragma mark - 停靠基准（核心）
+
+static CGFloat ShelfDockTopY(UIView *superview, UIWindow *window) {
+    if (!superview) return CGFLOAT_MAX;
+
+    UIView *qa = ShelfMatch(ShelfQuickActions(), window);
+    if (qa) {
+        return CGRectGetMinY([superview convertRect:qa.bounds fromView:qa]);
+    }
+
+    CGFloat safeBottom = 0.0;
+    if ([superview respondsToSelector:@selector(safeAreaInsets)]) {
+        safeBottom = superview.safeAreaInsets.bottom;
+    }
+    return CGRectGetMaxY(superview.bounds) - safeBottom - ShelfQuickActionsZone();
+}
 
 #pragma mark - 小组件行
 
@@ -105,11 +124,11 @@ static CGPoint ShelfAdjustedWidgetCenter(UIView *view, CGPoint systemCenter) {
 
     CGPoint out = systemCenter;
     UIView *superview = view.superview;
-    UIView *quickActions = ShelfMatch(ShelfQuickActions(), view.window);
+    CGFloat dockTop = ShelfDockTopY(superview, view.window);
+    CGFloat height = view.bounds.size.height;
 
-    if (quickActions && superview) {
-        CGRect qaFrame = [superview convertRect:quickActions.bounds fromView:quickActions];
-        out.y = CGRectGetMinY(qaFrame) - ShelfWidgetGap() - view.bounds.size.height * 0.5;
+    if (dockTop != CGFLOAT_MAX) {
+        out.y = dockTop - ShelfWidgetGap() - height * 0.5;
     }
     out.y += p.widgetOffset;
     out.x += p.xOffset;
@@ -162,19 +181,14 @@ static CGRect ShelfAdjustedListFrame(UIView *list, CGRect systemFrame) {
     CGFloat delta = 0.0;
 
     if (superview) {
+        CGFloat dockTop = ShelfDockTopY(superview, list.window);
         UIView *widget = ShelfMatch(ShelfProminent(), list.window);
-        UIView *quickActions = ShelfMatch(ShelfQuickActions(), list.window);
+        CGFloat widgetHeight = widget ? widget.bounds.size.height : ShelfDefaultWidgetHeight();
 
-        CGFloat referenceY = CGFLOAT_MAX;
-        if (widget) referenceY = CGRectGetMinY([superview convertRect:widget.bounds fromView:widget]);
-        if (quickActions) {
-            CGFloat qaTop = CGRectGetMinY([superview convertRect:quickActions.bounds fromView:quickActions]);
-            if (qaTop < referenceY) referenceY = qaTop;
-        }
-
-        if (referenceY != CGFLOAT_MAX) {
-            CGFloat bottom = referenceY - ShelfNotificationGap() + p.notificationOffset;
-            CGFloat candidateY = bottom - out.size.height;
+        if (dockTop != CGFLOAT_MAX) {
+            CGFloat widgetTop  = dockTop - ShelfWidgetGap() - widgetHeight;
+            CGFloat listBottom = widgetTop - ShelfNotificationGap() + p.notificationOffset;
+            CGFloat candidateY = listBottom - out.size.height;
             if (candidateY >= CGRectGetMinY(superview.bounds)) {
                 out.origin.y = candidateY;
             }
@@ -346,8 +360,11 @@ static void ShelfPrefsChanged(CFNotificationCenterRef center,
 - (void)viewDidLayoutSubviews {
     %orig;
     UIView *root = ((UIViewController *)self).view;
-    UIView *list = ShelfFindSubview(root, NSClassFromString(@"NCNotificationListView"), 6);
-    if (list) ShelfRelayoutList(list);
+    UIView *list = ShelfFindSubview(root, NSClassFromString(@"NCNotificationListView"), 8);
+    if (list) {
+        if (list.window) [ShelfLists() addObject:list];
+        ShelfRelayoutList(list);
+    }
 }
 %end
 %end
