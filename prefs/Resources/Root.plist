@@ -33,21 +33,21 @@
 			<key>label</key>
 			<string>小组件</string>
 			<key>footerText</key>
-			<string>默认停靠在锁屏快捷按钮正上方，这里只做微调。正值向下／向右。</string>
+			<string>0 为系统原始位置，正值向下移动。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>label</key>
-			<string>垂直微调</string>
+			<string>向下移动</string>
 			<key>defaults</key>
 			<string>com.shelf.prefs</string>
 			<key>key</key>
 			<string>widgetOffset</string>
 			<key>min</key>
-			<integer>-200</integer>
+			<integer>0</integer>
 			<key>max</key>
-			<integer>200</integer>
+			<integer>600</integer>
 			<key>default</key>
 			<integer>0</integer>
 			<key>showValue</key>
@@ -86,21 +86,21 @@
 			<key>label</key>
 			<string>通知</string>
 			<key>footerText</key>
-			<string>通知列表底部对齐到小组件行顶部。空间不足时保持系统原位置。</string>
+			<string>0 为系统原始位置，正值向上移动。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>label</key>
-			<string>垂直微调</string>
+			<string>向上移动</string>
 			<key>defaults</key>
 			<string>com.shelf.prefs</string>
 			<key>key</key>
 			<string>notificationOffset</string>
 			<key>min</key>
-			<integer>-120</integer>
+			<integer>0</integer>
 			<key>max</key>
-			<integer>120</integer>
+			<integer>400</integer>
 			<key>default</key>
 			<integer>0</integer>
 			<key>showValue</key>
