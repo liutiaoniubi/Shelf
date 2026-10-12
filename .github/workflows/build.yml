@@ -1,1 +1,86 @@
+name: Build Shelf (Relaxin / roothide)
 
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 手机上传文件夹不便，允许直接上传 zip：解压后即为仓库内容
+      - name: Extract source bundle if present
+        run: |
+          shopt -s nullglob
+          for z in *.zip; do
+            echo "发现压缩包：$z，解压中..."
+            unzip -o -q "$z"
+            rm -f "$z"
+          done
+          echo "--- 仓库根目录 ---"
+          ls -la
+
+      - name: Locate project root
+        id: locate
+        run: |
+          if [ -f Makefile ]; then
+            echo "src=." >> $GITHUB_OUTPUT
+          elif [ -f Shelf/Makefile ]; then
+            echo "src=Shelf" >> $GITHUB_OUTPUT
+          else
+            echo "未找到 Makefile，列出目录供排查：" >&2
+            find . -maxdepth 2 -name "Makefile" >&2 || true
+            exit 1
+          fi
+
+      # roothide 必须用 roothide 的 Theos fork，官方 theos 不支持 roothide scheme
+      - name: Checkout roothide Theos
+        uses: actions/checkout@v4
+        with:
+          repository: roothide/theos
+          path: .theos-src
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode*.app || true
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Build package (roothide)
+        run: |
+          export THEOS="$GITHUB_WORKSPACE/.theos-src"
+          export PATH="$THEOS/bin:$PATH"
+          MAKE=$(command -v gmake || command -v make)
+          cd "$GITHUB_WORKSPACE/${{ steps.locate.outputs.src }}"
+          $MAKE clean || true
+          $MAKE package FINALPACKAGE=1
+
+      - name: Inspect package contents
+        run: |
+          export THEOS="$GITHUB_WORKSPACE/.theos-src"
+          cd "$GITHUB_WORKSPACE/${{ steps.locate.outputs.src }}"
+          ls -la packages || true
+          "$THEOS/bin/dpkg-deb" -I packages/*.deb || true
+          "$THEOS/bin/dpkg-deb" -c packages/*.deb || true
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shelf-roothide-deb
+          path: ${{ steps.locate.outputs.src }}/packages/*.deb
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.locate.outputs.src }}/packages/*.deb
+          generate_release_notes: true
